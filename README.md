@@ -23,7 +23,7 @@ Each event looks like this in both versions:
 | Time | `Zeit` (if only a start time is shown, the default duration is used, 30 min unless changed) |
 | Location | optional clinic/address + `Ort` (room) |
 | Description | `Mitarbeiter: …`, `Ort: …` |
-| Reminder | configurable, default 10 min before |
+| Reminder | configurable, default 15 min before |
 
 Importing the same plan twice does **not** create duplicates.
 

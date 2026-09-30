@@ -7,7 +7,7 @@ export const DEFAULT_SETTINGS = {
   locationPrefix: "",
   titlePrefix: "",
   defaultDuration: 30,
-  reminderMinutes: 10,
+  reminderMinutes: 15,
   timeZone: "Europe/Berlin",
 };
 

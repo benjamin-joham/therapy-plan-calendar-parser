@@ -49,6 +49,6 @@ test("toICS produces a valid calendar", () => {
   assert.match(ics, /^BEGIN:VCALENDAR\r\n/);
   assert.match(ics, /DTSTART;TZID=Europe\/Berlin:20261001T090000/);
   assert.match(ics, /SUMMARY:Gruppe\\; Achtsamkeit\\, Teil 1/);
-  assert.match(ics, /TRIGGER:-PT10M/);
+  assert.match(ics, /TRIGGER:-PT15M/);
   assert.ok(ics.endsWith("END:VCALENDAR\r\n"));
 });

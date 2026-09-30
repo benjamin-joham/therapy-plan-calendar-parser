@@ -168,7 +168,7 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
   const SERVER = "Google Calendar";
   const $ = (id) => document.getElementById(id);
   const browserTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Vienna"; } catch { return "Europe/Vienna"; } })();
-  const DEFAULTS = { calendar: "primary", locPrefix: "", titlePrefix: "", duration: 30, reminder: 10, tz: browserTz };
+  const DEFAULTS = { calendar: "primary", locPrefix: "", titlePrefix: "", duration: 30, reminder: 15, tz: browserTz };
   const EXAMPLE = [
     { start: "08:00", end: "08:30", terminart: "Frühsport", ort: "Turnhalle", mitarbeiter: "Hr. Berger" },
     { start: "09:15", end: "10:00", terminart: "Physiotherapie Einzel", ort: "P 104", mitarbeiter: "Fr. Lang" },

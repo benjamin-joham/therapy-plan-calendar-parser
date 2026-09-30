@@ -16,7 +16,7 @@ Ablauf:
      - location: Ort
      - description: "Mitarbeiter: <Mitarbeiter>" (weglassen, wenn leer)
      - startTime/endTime mit timeZone "Europe/Vienna"
-     - overrideReminders: [{method: "popup", minutes: 10}]
+     - overrideReminders: [{method: "popup", minutes: 15}]
      - Kalender: Hauptkalender
    - Antworte am Ende in einer Zeile: wie viele eingetragen und wie viele übersprungen wurden.
 
