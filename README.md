@@ -1,81 +1,94 @@
 # Therapieplan → Google Kalender
 
-A web app for your phone. Take a photo of the day's therapy plan and Claude reads the table
-(**Zeit · Terminart · Ort · Mitarbeiter**). You check and correct the entries, then add them to Google Calendar.
+Take a photo of the day's therapy plan and Claude reads the table
+(**Zeit · Terminart · Ort · Mitarbeiter**). You check the entries, then they're added to Google Calendar.
+Everything works from the phone. No laptop is needed.
 
-- Runs completely in the phone's browser. There's no server, and everything is hosted free on GitHub Pages.
-- Can be installed on the home screen like an app (PWA).
-- Importing the same plan twice **updates** the existing events. It doesn't create duplicates.
-- There are three ways to get the events into the calendar:
-  1. **Directly into Google Calendar** with one tap (needs a one-time Google setup, see step 3).
-  2. **.ics file**: download it and open it with the calendar app.
-  3. **Single links**: one "Add to Google Calendar" link per appointment. No setup needed.
+There are two versions:
 
-Each event looks like this:
+| | **A. Claude artifact** (recommended) | B. Standalone web app |
+|---|---|---|
+| Opens in | the Claude app or claude.ai | any browser (GitHub Pages) |
+| Reads the photo with | your **Claude subscription** | an Anthropic **API key** (paid separately) |
+| Writes to the calendar via | your **Google Calendar connector** in Claude | Google OAuth client ID, or a .ics file / single links |
+| Setup | none | GitHub Pages, API key, optional Google Cloud project |
+| Source | [`artifact/therapieplan.html`](artifact/therapieplan.html) | `index.html`, `app.js`, `lib.js`, … |
+
+Each event looks like this in both versions:
 
 | Calendar field | Taken from |
 |---|---|
 | Title | `Terminart` (optional prefix) |
 | Time | `Zeit` (if only a start time is shown, the default duration is used, 30 min unless changed) |
-| Location | optional address/clinic prefix + `Ort` (room) |
+| Location | optional clinic/address + `Ort` (room) |
 | Description | `Mitarbeiter: …`, `Ort: …` |
 | Reminder | configurable, default 10 min before |
 
+Importing the same plan twice does **not** create duplicates.
+
 ---
 
-## Setup (all doable from the phone)
+## A. Claude artifact (recommended)
+
+**Link:** https://claude.ai/artifact/768trzAJ5o6os7tatYkhaS
+
+### Requirements
+- A Claude subscription (Pro/Max/Team). Each plan uses a little of your usage.
+- The **Google Calendar** connector connected in Claude (claude.ai → Settings → Connectors).
+
+### Daily use
+1. Open the link in the Claude app or on claude.ai. The first time, Claude asks whether the page may use Claude
+   and Google Calendar. Tap **Allow** on both.
+2. Tap **Foto aufnehmen oder wählen** (take or choose a photo) and photograph the plan. Take it straight on, with the table filling the photo, and only one day in the picture.
+   The page also sends Claude two zoomed halves of the photo so small print is easier to read.
+3. Tap **Termine erkennen** (recognize appointments). It usually takes 15–60 seconds. If a date is printed on the plan, it's used automatically.
+4. Check each appointment. You can edit any field, untick ones you don't want, or add a row.
+5. Tap **Termine eintragen** (add appointments). Each appointment then shows *eingetragen* (added), *schon vorhanden* (already there, skipped because an
+   event with the same title and start time is already on that day) or *Fehler* (error).
+
+### Settings (**Einstellungen** section on the page, saved on the device)
+- **Kalender** (calendar): the main calendar or any other of your calendars. The list loads when you open the section.
+- **Adresse / Klinik** (address / clinic): put in front of the room in the location field.
+- **Titel-Präfix** (title prefix), **Dauer ohne Endzeit** (duration when no end time is given), **Erinnerung** (reminder), **Zeitzone** (time zone, default: the phone's time zone).
+
+### Updating the artifact
+Edit `artifact/therapieplan.html`, then republish it to the same URL from a Claude Code session. The page declares two
+runtime capabilities: `sample` (asks Claude using the viewer's account) and `mcp` for the
+`Google Calendar` connector, limited to the tools `create_event`, `list_events` and `list_calendars`.
+
+The page only works inside Claude. Opened as a plain file or on another website, it can't reach Claude or the calendar.
+
+---
+
+## B. Standalone web app (needs an API key)
+
+Use this only if you want to run the tool outside Claude. It's a PWA hosted on GitHub Pages.
+Besides adding events directly to Google Calendar, it can export a **.ics file** or single "Add to Google Calendar" links.
 
 ### 1. Turn on GitHub Pages
 1. Open this repo on github.com in the phone browser. If needed, tap **⋯ → Desktop site**.
-2. Go to **Settings → Pages**.
-3. Under *Build and deployment*, set **Source: Deploy from a branch**. Pick the branch that has the app (`main` after merging, or `claude/therapy-timetable-google-calendar-wt3crs`) and the folder **/ (root)**. Tap **Save**.
-4. After about 1 minute the app is live at
-   **https://benjamin-joham.github.io/therapy-plan-calendar-parser/**
-5. Open that link on the phone and add it to the home screen:
-   - Android/Chrome: **⋮ → Add to Home screen**
-   - iPhone/Safari: **Share → Add to Home Screen**
+2. Go to **Settings → Pages** and set **Source: Deploy from a branch**. Pick the branch with the app and the folder **/ (root)**, then tap **Save**.
+3. After about 1 minute the app is at **https://benjamin-joham.github.io/therapy-plan-calendar-parser/**.
+   Add it to the home screen: on Android/Chrome **⋮ → Add to Home screen**, on iPhone/Safari **Share → Add to Home Screen**.
 
-### 2. Anthropic API key (for reading the image)
-1. Go to <https://console.anthropic.com> → **API Keys → Create Key**. Some credit is needed. One plan costs roughly a few cents.
-2. In the app, tap **⚙️** and paste the key into *Anthropic-API-Key*, then tap **Speichern** (Save).
-
-The key is stored only in this phone's browser storage and is sent only to `api.anthropic.com`.
+### 2. Anthropic API key
+Create one at <https://console.anthropic.com> → **API Keys**. This is billed separately from a Claude subscription.
+Paste it in the app under **⚙️**. The key stays in this phone's browser storage and is sent only to `api.anthropic.com`.
 
 ### 3. (Optional) Google Client ID for adding events with one tap
-Without this step you can still use the .ics download or the single links.
+1. Open <https://console.cloud.google.com> (desktop site mode) and create a project.
+2. Go to **APIs & Services → Library → Google Calendar API → Enable**.
+3. Set up the **OAuth consent screen**: user type External, and add your own Gmail address as a test user.
+4. Go to **Credentials → Create credentials → OAuth client ID → Web application**, and set the authorized JavaScript origin to
+   `https://benjamin-joham.github.io`.
+5. Paste the client ID in the app under **⚙️**.
 
-1. Open <https://console.cloud.google.com> (use desktop site mode) and create a new project, e.g. "Therapieplan".
-2. Go to **APIs & Services → Library**, search for **Google Calendar API** and tap **Enable**.
-3. Go to **APIs & Services → OAuth consent screen** (Google Auth Platform):
-   - App name: anything. User type: **External**.
-   - Under **Audience / Test users**, add your own Gmail address.
-4. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**:
-   - Application type: **Web application**
-   - Authorized JavaScript origins: `https://benjamin-joham.github.io`
-   - Tap **Create** and copy the **Client ID** (`….apps.googleusercontent.com`).
-5. In the app, tap **⚙️**, paste it into *Google OAuth Client-ID* and save.
-
-The first time you tap "Direkt in Google Kalender eintragen" (add directly to Google Calendar), Google asks for permission.
-Because the app is in "Testing" mode, Google shows a warning screen. Tap **Continue**.
-
-### Other settings (⚙️)
-- **Kalender-ID** (calendar ID): `primary` = your main calendar. To use a separate calendar such as "Therapie", find its ID in
-  Google Calendar (web) → calendar settings → *Integrate calendar* → *Calendar ID*.
-- **Adresse / Ortspräfix** (address/location prefix): e.g. the clinic's name or address, put in front of the room.
-- **Titel-Präfix** (title prefix), **Standarddauer** (default duration), **Erinnerung** (reminder), **Zeitzone** (time zone, default `Europe/Berlin`).
-
----
-
-## Daily use
-1. Open the app and tap **📷 Foto aufnehmen** (take photo) to photograph the plan. Take it straight on, well lit, and with only one day in the picture.
-2. Tap **Termine erkennen** (recognize appointments). If a date is printed on the plan, the app uses it automatically.
-3. Check the entries. You can correct fields, untick appointments you don't want, or add your own.
-4. Tap **📅 Direkt in Google Kalender eintragen**, or use the .ics file / single links.
+Without step 3 you can still use the .ics download or the single links.
 
 ---
 
 ## Development
-Plain HTML/CSS/JS with no build step. The Anthropic SDK is bundled once into `vendor/anthropic-sdk.js`.
+The artifact is one self-contained file: `artifact/therapieplan.html`. The standalone app is plain HTML/CSS/JS with no build step. The Anthropic SDK is bundled once into `vendor/anthropic-sdk.js`.
 
 ```sh
 npm install
@@ -86,9 +99,10 @@ npm run serve          # local preview on http://localhost:8080
 
 | File | Purpose |
 |---|---|
-| `index.html`, `styles.css` | UI (mobile first) |
+| `artifact/therapieplan.html` | **Version A**: the Claude artifact (UI, prompt, connector calls in one file) |
+| `index.html`, `styles.css` | Version B: UI (mobile first) |
 | `app.js` | Camera/upload, Claude request, review list, Google Calendar / ICS export |
 | `lib.js` | Pure logic: output schema, prompt, normalizing, event/ICS building (tested in `test/`) |
 | `sw.js`, `manifest.webmanifest`, `icon*` | PWA (home screen, offline shell) |
 
-Reading the image uses `claude-opus-5-5` with structured JSON output. The server-side refusal fallback (`fallbacks: "default"`) is turned on.
+In version B, reading the image uses `claude-opus-5-5` with structured JSON output. The server-side refusal fallback (`fallbacks: "default"`) is turned on.
