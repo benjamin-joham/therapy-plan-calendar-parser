@@ -39,7 +39,7 @@ Importing the same plan twice does **not** create duplicates.
 ### Daily use
 1. Open the link in the Claude app or on claude.ai. The first time, Claude asks whether the page may use Claude
    and Google Calendar. Tap **Allow** on both.
-2. Tap **Foto aufnehmen oder wählen** (take or choose a photo) and photograph the plan. Take it straight on, with the table filling the photo, and only one day in the picture.
+2. Photograph the plan with your camera app first (straight on, table filling the photo, one day only). Then tap **Foto auswählen** (select photo) and pick it.
    The page also sends Claude two zoomed halves of the photo so small print is easier to read.
 3. Tap **Termine erkennen** (recognize appointments). It usually takes 15–60 seconds. If a date is printed on the plan, it's used automatically.
 4. Check each appointment. You can edit any field, untick ones you don't want, or add a row.

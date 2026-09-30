@@ -106,7 +106,7 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
     <label class="field" for="date">Datum des Plans
       <input type="date" id="date">
     </label>
-    <label class="pick" for="file">Foto aufnehmen oder wählen
+    <label class="pick" for="file">Foto auswählen
       <input type="file" id="file" accept="image/jpeg,image/png,image/webp,image/gif">
     </label>
     <div class="photo" id="photoBox" hidden>
@@ -114,7 +114,8 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
       <div class="name" id="photoName"></div>
     </div>
     <button class="primary" id="read" disabled>Termine erkennen</button>
-    <p class="status" id="readStatus" role="status">Tipp: Den Plan gerade und formatfüllend fotografieren, nur ein Tag pro Foto.</p>
+    <p class="status" id="readStatus" role="status">Den Plan vorher mit der Kamera-App fotografieren: gerade, formatfüllend, ein Tag pro Foto. Dann hier auswählen.</p>
+    <p class="hint" id="diag"></p>
   </section>
 
   <section class="panel" aria-labelledby="h-plan">
@@ -325,6 +326,11 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
   let photo = null;
   let sample = null;
   let imageSlots = 0;
+  let capProblem = "";
+  let capInfo = "Claude: wird geladen";
+  function showDiag(lastError) {
+    $("diag").textContent = `Status: ${capInfo}${lastError ? ` · letzter Fehler: ${lastError}` : ""}`;
+  }
   let busy = false;
 
   $("file").addEventListener("change", () => {
@@ -334,8 +340,9 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
     $("thumb").src = URL.createObjectURL(f);
     $("photoName").textContent = `${f.name || "Foto"} · ${(f.size / 1048576).toFixed(1)} MB`;
     $("photoBox").hidden = false;
-    setStatus("readStatus", "Foto bereit. Jetzt „Termine erkennen“ tippen.");
-    $("read").disabled = !sample || !imageSlots;
+    if (capProblem) setStatus("readStatus", capProblem, "err");
+    else setStatus("readStatus", "Foto bereit. Jetzt „Termine erkennen“ tippen.");
+    $("read").disabled = false;
   });
 
   // Phones take large photos; the platform shrinks each image to ~1.2 MP. To keep small print
@@ -381,7 +388,7 @@ Antworte nur mit JSON in genau dieser Form:
   const SAMPLE_ERRORS = {
     not_granted: "Claude-Zugriff wurde für diese Seite nicht erlaubt. Seite neu laden und beim Nachfragen „Erlauben“ wählen.",
     sampling_disabled: "Claude ist für dieses Konto hier nicht verfügbar.",
-    images_unavailable: "Diese Ansicht kann keine Bilder an Claude senden. Bitte die Seite in der Claude-App oder auf claude.ai öffnen.",
+    images_unavailable: "Diese Ansicht kann keine Bilder an Claude senden. Bitte den Link im Handy-Browser auf claude.ai öffnen (statt in der App) und es dort versuchen.",
     image_rejected: "Das Foto konnte nicht verarbeitet werden. Bitte ein anderes Foto (JPG/PNG) wählen.",
     rate_limited: "Nutzungslimit erreicht oder zu viele Anfragen. Bitte später erneut versuchen.",
     session_expired: "Sitzung abgelaufen. Bitte in Claude neu anmelden.",
@@ -391,7 +398,11 @@ Antworte nur mit JSON in genau dieser Form:
   };
 
   $("read").addEventListener("click", async () => {
-    if (!photo || !sample) return;
+    if (!photo) return;
+    if (!sample || !imageSlots) {
+      setStatus("readStatus", capProblem || "Claude ist noch nicht bereit. Bitte ein paar Sekunden warten und erneut tippen.", "err");
+      return;
+    }
     $("read").disabled = true;
     setStatus("readStatus", "Claude liest den Plan … (meist 15–60 Sekunden)");
     try {
@@ -417,10 +428,12 @@ Antworte nur mit JSON in genau dieser Form:
       renderRows();
       $("h-plan").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     } catch (e) {
-      if (e?.code === "not_granted" || e?.code === "sampling_disabled") sample = null;
+      if (e?.code === "not_granted" || e?.code === "sampling_disabled") { sample = null; capProblem = SAMPLE_ERRORS[e.code]; }
+      if (e?.code === "images_unavailable") { imageSlots = 0; capProblem = SAMPLE_ERRORS.images_unavailable; }
       setStatus("readStatus", SAMPLE_ERRORS[e?.code] || "Verbindung zu Claude unterbrochen. Bitte noch einmal versuchen.", "err");
+      showDiag(e?.code);
     } finally {
-      $("read").disabled = !photo || !sample || !imageSlots;
+      $("read").disabled = !photo;
     }
   });
 
@@ -543,15 +556,25 @@ Antworte nur mit JSON in genau dieser Form:
   if (window.claude?.use) {
     window.claude.use("sample").then(async (s) => {
       sample = s;
-      if (!s) { setStatus("readStatus", "Die Bilderkennung funktioniert nur, wenn die Seite in Claude geöffnet ist (App oder claude.ai).", "err"); return; }
-      const lim = await s.limits().catch(() => null);
-      imageSlots = lim?.images?.maxCount || 0;
-      if (!imageSlots) setStatus("readStatus", SAMPLE_ERRORS.images_unavailable, "err");
-      $("read").disabled = !photo || !imageSlots;
+      if (!s) {
+        capInfo = "Claude in dieser Ansicht nicht verfügbar";
+        capProblem = "Diese Ansicht lässt keine Anfragen an Claude zu. Bitte den Link im Handy-Browser auf claude.ai öffnen (angemeldet) und es dort versuchen.";
+      } else {
+        const lim = await s.limits().catch(() => null);
+        imageSlots = lim?.images?.maxCount || 0;
+        if (lim?.images?.mediaTypes?.length) $("file").accept = lim.images.mediaTypes.join(",");
+        capInfo = imageSlots ? `Claude bereit, bis zu ${imageSlots} Bilder` : (lim ? "Claude bereit, aber ohne Bilder" : "Claude bereit, Limits unbekannt");
+        if (!imageSlots) capProblem = SAMPLE_ERRORS.images_unavailable;
+      }
+      showDiag();
+      if (capProblem && photo) setStatus("readStatus", capProblem, "err");
     });
     window.claude.use("mcp").then((m) => { mcp = m; });
   } else {
-    setStatus("readStatus", "Diese Seite bitte in Claude öffnen (App oder claude.ai), dann funktionieren Bilderkennung und Kalender.", "err");
+    capInfo = "außerhalb von Claude geöffnet";
+    capProblem = "Diese Seite bitte in Claude öffnen (App oder claude.ai), dann funktionieren Bilderkennung und Kalender.";
+    setStatus("readStatus", capProblem, "err");
+    showDiag();
   }
 })();
 </script>
