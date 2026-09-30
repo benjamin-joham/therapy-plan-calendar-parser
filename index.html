@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Therapieplan → Kalender</title>
+  <meta name="theme-color" content="#2f6f5e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Therapieplan">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Therapieplan → Kalender</h1>
+    <button id="settingsBtn" class="icon-btn" aria-label="Einstellungen">⚙️</button>
+  </header>
+
+  <main>
+    <div id="setupHint" class="card warn" hidden>
+      Bitte zuerst die <a href="#" id="setupLink">Einstellungen</a> ausfüllen (mindestens den Anthropic-API-Key).
+    </div>
+
+    <section class="card">
+      <h2>1. Plan fotografieren</h2>
+      <label class="field">
+        <span>Datum des Plans</span>
+        <input type="date" id="dateInput">
+      </label>
+      <div class="row">
+        <label class="btn primary file-btn">
+          📷 Foto aufnehmen
+          <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
+        </label>
+        <label class="btn file-btn">
+          🖼️ Bild wählen
+          <input type="file" id="fileInput" accept="image/*" hidden>
+        </label>
+      </div>
+      <img id="preview" alt="Vorschau des Plans" hidden>
+      <button id="parseBtn" class="btn primary wide" disabled>Termine erkennen</button>
+      <p id="parseStatus" class="status" role="status"></p>
+    </section>
+
+    <section class="card" id="reviewSection" hidden>
+      <h2>2. Termine prüfen</h2>
+      <p class="muted">Tippe in ein Feld, um es zu korrigieren. Nicht gewünschte Termine abwählen.</p>
+      <div id="entries"></div>
+      <button id="addRowBtn" class="btn wide">+ Termin hinzufügen</button>
+    </section>
+
+    <section class="card" id="exportSection" hidden>
+      <h2>3. In den Kalender eintragen</h2>
+      <button id="gcalBtn" class="btn primary wide">📅 Direkt in Google Kalender eintragen</button>
+      <p id="gcalHint" class="muted small" hidden>Für den direkten Eintrag wird eine Google-Client-ID in den Einstellungen benötigt. Alternativ:</p>
+      <button id="icsBtn" class="btn wide">⬇️ Als .ics-Datei herunterladen</button>
+      <details>
+        <summary>Einzeln über Links hinzufügen</summary>
+        <ul id="linkList" class="link-list"></ul>
+      </details>
+      <p id="exportStatus" class="status" role="status"></p>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" id="settingsForm">
+      <h2>Einstellungen</h2>
+      <p class="muted small">Alles wird nur lokal auf diesem Gerät gespeichert.</p>
+
+      <label class="field">
+        <span>Anthropic-API-Key (für die Bilderkennung)</span>
+        <input type="password" name="anthropicKey" autocomplete="off" placeholder="sk-ant-...">
+      </label>
+
+      <label class="field">
+        <span>Google OAuth Client-ID (optional, für direkten Eintrag)</span>
+        <input type="text" name="googleClientId" autocomplete="off" placeholder="1234-abc.apps.googleusercontent.com">
+      </label>
+
+      <label class="field">
+        <span>Kalender-ID</span>
+        <input type="text" name="calendarId" placeholder="primary">
+      </label>
+
+      <label class="field">
+        <span>Adresse / Ortspräfix (z.&nbsp;B. Klinikname)</span>
+        <input type="text" name="locationPrefix" placeholder="Rehaklinik Musterstadt">
+      </label>
+
+      <label class="field">
+        <span>Titel-Präfix</span>
+        <input type="text" name="titlePrefix" placeholder="z. B. 🩺 ">
+      </label>
+
+      <div class="row">
+        <label class="field">
+          <span>Standarddauer (Min.)</span>
+          <input type="number" name="defaultDuration" min="5" step="5" placeholder="30">
+        </label>
+        <label class="field">
+          <span>Erinnerung (Min. vorher)</span>
+          <input type="number" name="reminderMinutes" min="0" step="5" placeholder="10">
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Zeitzone</span>
+        <input type="text" name="timeZone" placeholder="Europe/Berlin">
+      </label>
+
+      <div class="row end">
+        <button type="submit" value="cancel" class="btn">Abbrechen</button>
+        <button type="submit" value="save" class="btn primary">Speichern</button>
+      </div>
+      <p class="muted small"><a href="https://github.com/benjamin-joham/therapy-plan-calendar-parser#readme" target="_blank" rel="noopener">Einrichtungsanleitung</a></p>
+    </form>
+  </dialog>
+
+  <template id="entryTemplate">
+    <div class="entry">
+      <div class="entry-head">
+        <label class="check"><input type="checkbox" data-f="include" checked> übernehmen</label>
+        <button type="button" class="icon-btn remove" aria-label="Termin löschen">🗑️</button>
+      </div>
+      <div class="row">
+        <label class="field"><span>Von</span><input type="time" data-f="start"></label>
+        <label class="field"><span>Bis</span><input type="time" data-f="end"></label>
+      </div>
+      <label class="field"><span>Terminart</span><input type="text" data-f="terminart"></label>
+      <div class="row">
+        <label class="field"><span>Ort</span><input type="text" data-f="ort"></label>
+        <label class="field"><span>Mitarbeiter</span><input type="text" data-f="mitarbeiter"></label>
+      </div>
+    </div>
+  </template>
+</body>
+</html>

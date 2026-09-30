@@ -1,0 +1,15 @@
+{
+  "name": "therapy-plan-calendar-parser",
+  "private": true,
+  "description": "Phone web app: photo of a daily therapy plan -> Google Calendar events",
+  "scripts": {
+    "build:vendor": "esbuild tools/sdk-entry.js --bundle --format=esm --minify --platform=browser --outfile=vendor/anthropic-sdk.js",
+    "serve": "npx http-server -c-1 -p 8080 .",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "0.129.0",
+    "esbuild": "^0.25.0"
+  },
+  "type": "module"
+}
