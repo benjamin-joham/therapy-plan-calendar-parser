@@ -12,7 +12,7 @@ There are three ways to run it:
 | Reads the photo with | your Claude subscription | your Claude subscription | an Anthropic API key (paid separately) |
 | Writes to the calendar via | Google Calendar connector | Google Calendar connector | Google OAuth client ID, or .ics / single links |
 | Setup | paste the instructions once | none | GitHub Pages, API key, optional Google Cloud project |
-| Status | works | **photo reading is blocked on phones** (artifact pages can't send images to Claude there) | works, but needs an API key |
+| Status | works | works; on phones the photo is read on the device first (see below) | works, but needs an API key |
 | Source | [`claude-project/INSTRUCTIONS.md`](claude-project/INSTRUCTIONS.md) | [`artifact/therapieplan.html`](artifact/therapieplan.html) | `index.html`, `app.js`, `lib.js`, … |
 
 Each event looks like this in both versions:
@@ -53,8 +53,12 @@ To skip the confirmation step, write "direkt eintragen" (add directly) together 
 
 ## B. Claude artifact
 
-> **Doesn't work on phones:** artifact pages can't send images to Claude in the Claude app or in the phone browser,
-> so the recognition step fails. The page is kept for reference and in case this changes. Use **A** instead.
+> **On phones:** artifact pages can't send images to Claude (the status line under the button says
+> "Claude bereit, Foto wird auf dem Handy gelesen" (Claude ready, the photo is read on the phone)). The page then reads the photo on the phone with bundled
+> text recognition (tesseract.js, German model) and sends only the text to Claude, which sorts it into appointments.
+> It tries all four orientations, so a sideways photo is fine. Crossed-out times come out garbled in the
+> recognized text, so those rows are marked **gestrichen?** (crossed out?) and unticked. Compare them with the photo before adding.
+> The first run downloads about 10 MB.
 
 **Link:** https://claude.ai/artifact/768trzAJ5o6os7tatYkhaS
 
@@ -127,6 +131,7 @@ npm run serve          # local preview on http://localhost:8080
 |---|---|
 | `claude-project/INSTRUCTIONS.md` | **Version A**: project instructions for Claude |
 | `artifact/therapieplan.html` | Version B: the Claude artifact (UI, prompt, connector calls in one file) |
+| `artifact/ocr/` | Version B: bundled on-device text recognition, published with the page (see `artifact/ocr/README.txt`) |
 | `index.html`, `styles.css` | Version C: UI (mobile first) |
 | `app.js` | Camera/upload, Claude request, review list, Google Calendar / ICS export |
 | `lib.js` | Pure logic: output schema, prompt, normalizing, event/ICS building (tested in `test/`) |

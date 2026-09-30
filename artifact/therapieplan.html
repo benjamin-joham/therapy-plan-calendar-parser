@@ -123,6 +123,7 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
       <h2 id="h-plan"><span class="step">2</span>Termine prüfen</h2>
       <span class="badge" id="exampleBadge">Beispiel</span>
     </div>
+    <p class="hint" id="strikeHint" hidden>Termine mit „gestrichen?“ haben im Plan vermutlich eine durchgestrichene Uhrzeit und sind abgewählt. Bitte mit dem Foto vergleichen.</p>
     <p class="hint" id="planHint">So sieht ein erkannter Plan aus. Nach dem Erkennen stehen hier deine Termine; jedes Feld lässt sich antippen und ändern.</p>
     <div class="cols" aria-hidden="true"><span>Zeit</span><span>Terminart · Ort · Mitarbeiter</span></div>
     <div class="rows" id="rows"></div>
@@ -163,6 +164,7 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
   </details>
 </div>
 
+<script src="ocr/tesseract.min.js"></script>
 <script>
 (() => {
   const SERVER = "Google Calendar";
@@ -253,6 +255,7 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
             <input type="text" aria-label="Ort" placeholder="Ort" data-f="ort" id="r${i}-ort">
             <input type="text" aria-label="Mitarbeiter" placeholder="Mitarbeiter" data-f="mitarbeiter" id="r${i}-mitarbeiter">
           </div>
+          <input type="text" aria-label="Hinweis" placeholder="Hinweis (z. B. Handtuch mitbringen)" data-f="hinweis" id="r${i}-hinweis">
           <div class="foot">
             <label><input type="checkbox" data-f="include" id="r${i}-include"> eintragen</label>
             <span class="state"></span>
@@ -280,7 +283,7 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
   }
 
   function setChip(slot, state) {
-    const map = { ok: ["ok", "eingetragen"], skip: ["skip", "schon vorhanden"], bad: ["bad", "Fehler"], busy: ["busy", "läuft …"] };
+    const map = { struck: ["skip", "gestrichen?"], ok: ["ok", "eingetragen"], skip: ["skip", "schon vorhanden"], bad: ["bad", "Fehler"], busy: ["busy", "läuft …"] };
     slot.replaceChildren();
     if (!map[state]) return;
     const c = document.createElement("span");
@@ -291,7 +294,7 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
 
   $("addRow").addEventListener("click", () => {
     if (isExample) { rows = []; isExample = false; }
-    rows.push({ start: "", end: "", terminart: "", ort: "", mitarbeiter: "", include: true, state: "" });
+    rows.push({ start: "", end: "", terminart: "", ort: "", mitarbeiter: "", hinweis: "", include: true, state: "" });
     renderRows();
     $(`r${rows.length - 1}-start`)?.focus();
   });
@@ -307,6 +310,7 @@ details.settings .inner { display: grid; gap: 10px; margin-top: 12px; }
       const lines = [];
       if (r.mitarbeiter?.trim()) lines.push(`Mitarbeiter: ${r.mitarbeiter.trim()}`);
       if (r.ort?.trim()) lines.push(`Ort: ${r.ort.trim()}`);
+      if (r.hinweis?.trim()) lines.push(r.hinweis.trim());
       return {
         index: i, date, start, end,
         summary: `${settings.titlePrefix || ""}${r.terminart?.trim() || "Termin"}`,
@@ -385,40 +389,147 @@ Antworte nur mit JSON in genau dieser Form:
 {"date":"2026-10-01","entries":[{"start":"08:00","end":"08:30","terminart":"Frühsport","ort":"Turnhalle","mitarbeiter":"Hr. Berger"}]}`;
   }
 
+  // ---------- on-device text recognition (used when the view can't send images to Claude) ----------
+  const OCR_BASE = new URL("ocr/", location.href).href;
+  let ocrWorker = null;
+
+  async function getOcrWorker(progress) {
+    if (ocrWorker) return ocrWorker;
+    if (!window.Tesseract) throw Object.assign(new Error("ocr_missing"), { code: "ocr_missing" });
+    // The German model ships as base64 inside a .js file (artifacts don't serve .gz); load it on first use.
+    if (!self.DEU_TRAINEDDATA_GZ_B64) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = OCR_BASE + "deu-traineddata.js";
+        s.onload = resolve;
+        s.onerror = () => reject(Object.assign(new Error("ocr_missing"), { code: "ocr_missing" }));
+        document.head.append(s);
+      });
+    }
+    const bin = atob(self.DEU_TRAINEDDATA_GZ_B64);
+    const langData = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) langData[i] = bin.charCodeAt(i);
+    ocrWorker = await Tesseract.createWorker([{ code: "deu", data: langData }], 1, {
+      workerPath: OCR_BASE + "worker.min.js",
+      corePath: OCR_BASE,
+      workerBlobURL: false,
+      cacheMethod: "none",
+      logger: (m) => { if (m.status && typeof m.progress === "number") progress(m.status, m.progress); },
+    });
+    await ocrWorker.setParameters({ tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" });
+    return ocrWorker;
+  }
+
+  function rotated(bmp, deg, maxEdge) {
+    const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+    const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+    const c = document.createElement("canvas");
+    const side = deg % 180 !== 0;
+    c.width = side ? h : w; c.height = side ? w : h;
+    const g = c.getContext("2d");
+    g.translate(c.width / 2, c.height / 2);
+    g.rotate((deg * Math.PI) / 180);
+    g.drawImage(bmp, -w / 2, -h / 2, w, h);
+    return c;
+  }
+
+  const TIME_RE = /\b\d{1,2}[:.]\d{2}\b/g;
+  function ocrScore(text, conf) { return (text.match(TIME_RE) || []).length * 10 + conf / 10; }
+
+  // Photos of the plan are often taken sideways: try the four orientations on a small copy,
+  // then read the best one at full resolution.
+  async function ocrPhoto(file) {
+    const status = (t) => setStatus("readStatus", t);
+    status("Texterkennung wird geladen … (beim ersten Mal ca. 10 MB)");
+    const worker = await getOcrWorker((what, p) => {
+      if (/loading|initializ/i.test(what)) status(`Texterkennung wird geladen … ${Math.round(p * 100)} %`);
+    });
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    let best = { deg: 0, score: -1 };
+    const order = [0, 90, 270, 180];
+    for (let i = 0; i < order.length; i++) {
+      status(`Suche die richtige Ausrichtung … (${i + 1}/4)`);
+      const { data } = await worker.recognize(rotated(bmp, order[i], 1200));
+      const score = ocrScore(data.text || "", data.confidence || 0);
+      if (score > best.score) best = { deg: order[i], score };
+      if ((data.text.match(TIME_RE) || []).length >= 4 && data.confidence > 55) break;
+    }
+    status("Lese den Plan … (ca. 10–30 Sekunden)");
+    const { data } = await worker.recognize(rotated(bmp, best.deg, 2600));
+    return (data.text || "").trim();
+  }
+
+  function promptForText(ocr) {
+    return `Unten steht der per Texterkennung (OCR) gelesene Text eines Tages-Therapieplans. Die Tabelle hat die Spalten "Zeit", "Terminart", "Ort" (Raum im Gebäude) und "Mitarbeiter". Jede Tabellenzeile steht im OCR-Text meist auf einer Zeile; OCR-Fehler sind möglich (z. B. "0" statt "O", fehlende Doppelpunkte, verrutschte Spalten).
+
+Extrahiere jede Tabellenzeile als einen Termin:
+- start/end aus der Spalte "Zeit" im Format HH:MM (24 h). "08:30-09:00" → start "08:30", end "09:00". Nur eine Uhrzeit: end "".
+- terminart, ort, mitarbeiter: Text der Spalte wie gedruckt; offensichtliche OCR-Fehler korrigieren, Abkürzungen nicht auflösen. Räume sehen meist so aus: "A 111", "E 104". Mitarbeiter meist "Fr. …" oder "Hr. …". Leere Zelle: "".
+- hinweis: Zeilen ohne Uhrzeit direkt unter einem Termin (z. B. "Handtuch mitbringen.", Erklärungen von Abkürzungen) gehören als Hinweis zu diesem Termin. Sonst "".
+- gestrichen: true, wenn die Uhrzeit im OCR-Text verstümmelt ist (unmögliche Zeiten wie "40:45", zusätzliche Ziffern wie "411:15", angehängte Striche wie "12:00-"). So erscheinen durchgestrichene Zeiten in der Texterkennung. Gib dann die wahrscheinlich gemeinte Zeit an. Sonst false.
+- Kopfzeile, Name, Fußnoten und Druckdatum ignorieren.
+- date: das Datum des Plans (steht meist neben dem Wochentag, z. B. "Mittwoch 30.09.26") als YYYY-MM-DD, sonst "". Nicht das Druckdatum am Seitenende.
+Nichts erfinden.
+
+Antworte nur mit JSON in genau dieser Form:
+{"date":"2026-09-30","entries":[{"start":"08:30","end":"09:00","terminart":"Eintrittserhebung","ort":"A 111","mitarbeiter":"Fr. Muster","hinweis":"Lesehilfe mitbringen.","gestrichen":false}]}
+
+OCR-Text:
+"""
+${ocr.slice(0, 20000)}
+"""`;
+  }
+
   const SAMPLE_ERRORS = {
     not_granted: "Claude-Zugriff wurde für diese Seite nicht erlaubt. Seite neu laden und beim Nachfragen „Erlauben“ wählen.",
     sampling_disabled: "Claude ist für dieses Konto hier nicht verfügbar.",
-    images_unavailable: "Diese Ansicht kann keine Bilder an Claude senden. Bitte den Link im Handy-Browser auf claude.ai öffnen (statt in der App) und es dort versuchen.",
+    images_unavailable: "Diese Ansicht kann keine Bilder an Claude senden. Bitte noch einmal tippen: Das Foto wird dann auf dem Handy gelesen.",
     image_rejected: "Das Foto konnte nicht verarbeitet werden. Bitte ein anderes Foto (JPG/PNG) wählen.",
     rate_limited: "Nutzungslimit erreicht oder zu viele Anfragen. Bitte später erneut versuchen.",
     session_expired: "Sitzung abgelaufen. Bitte in Claude neu anmelden.",
     refused: "Claude konnte dieses Bild nicht verarbeiten. Bitte ein anderes Foto versuchen.",
     invalid_json: "Die Antwort war unvollständig. Bitte „Termine erkennen“ noch einmal tippen.",
     empty_completion: "Keine Termine gefunden. Ist der Plan gut lesbar im Bild?",
+    ocr_missing: "Die Texterkennung konnte in dieser Ansicht nicht geladen werden.",
+    ocr_failed: "Die Texterkennung ist fehlgeschlagen. Bitte ein schärferes, gerades Foto versuchen.",
   };
 
   $("read").addEventListener("click", async () => {
     if (!photo) return;
-    if (!sample || !imageSlots) {
+    if (!sample) {
       setStatus("readStatus", capProblem || "Claude ist noch nicht bereit. Bitte ein paar Sekunden warten und erneut tippen.", "err");
       return;
     }
     $("read").disabled = true;
-    setStatus("readStatus", "Claude liest den Plan … (meist 15–60 Sekunden)");
+    let usedOcr = false;
     try {
-      const images = await imagesFor(photo);
-      const data = await sample.json(promptFor(images.length), { images, modelTier: "default" });
+      let data;
+      if (imageSlots) {
+        setStatus("readStatus", "Claude liest den Plan … (meist 15–60 Sekunden)");
+        const images = await imagesFor(photo);
+        data = await sample.json(promptFor(images.length), { images, modelTier: "default" });
+      } else {
+        usedOcr = true;
+        let text;
+        try { text = await ocrPhoto(photo); }
+        catch (err) { throw { code: err?.code === "ocr_missing" ? "ocr_missing" : "ocr_failed" }; }
+        if ((text.match(TIME_RE) || []).length === 0) throw { code: "ocr_failed" };
+        setStatus("readStatus", "Claude ordnet die Termine … (meist 10–40 Sekunden)");
+        data = await sample.json(promptForText(text), { modelTier: "default" });
+      }
       const seen = new Set();
       const found = (Array.isArray(data?.entries) ? data.entries : [])
         .map((e) => ({
           start: normTime(e?.start), end: normTime(e?.end),
           terminart: String(e?.terminart ?? "").trim(), ort: String(e?.ort ?? "").trim(),
-          mitarbeiter: String(e?.mitarbeiter ?? "").trim(), include: true, state: "",
+          mitarbeiter: String(e?.mitarbeiter ?? "").trim(), hinweis: String(e?.hinweis ?? "").trim(),
+          include: e?.gestrichen !== true, state: e?.gestrichen === true ? "struck" : "",
         }))
         .filter((e) => (e.start || e.terminart) && !seen.has(e.start + "|" + e.terminart.toLowerCase()) && seen.add(e.start + "|" + e.terminart.toLowerCase()))
         .sort((a, b) => a.start.localeCompare(b.start));
       if (!found.length) { setStatus("readStatus", "Keine Termine erkannt. Bitte ein schärferes Foto versuchen.", "err"); return; }
       rows = found; isExample = false;
+      $("strikeHint").hidden = !usedOcr;
       let msg = `${found.length} Termine erkannt. Bitte kurz prüfen.`;
       if (/^\d{4}-\d{2}-\d{2}$/.test(data?.date || "") && data.date !== $("date").value) {
         $("date").value = data.date;
@@ -429,7 +540,7 @@ Antworte nur mit JSON in genau dieser Form:
       $("h-plan").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     } catch (e) {
       if (e?.code === "not_granted" || e?.code === "sampling_disabled") { sample = null; capProblem = SAMPLE_ERRORS[e.code]; }
-      if (e?.code === "images_unavailable") { imageSlots = 0; capProblem = SAMPLE_ERRORS.images_unavailable; }
+      if (e?.code === "images_unavailable") imageSlots = 0; // next tap uses on-device recognition
       setStatus("readStatus", SAMPLE_ERRORS[e?.code] || "Verbindung zu Claude unterbrochen. Bitte noch einmal versuchen.", "err");
       showDiag(e?.code);
     } finally {
@@ -437,7 +548,7 @@ Antworte nur mit JSON in genau dieser Form:
     }
   });
 
-  $("date").addEventListener("change", () => { rows.forEach((r) => (r.state = "")); renderRows(); });
+  $("date").addEventListener("change", () => { rows.forEach((r) => { if (r.state !== "struck") r.state = ""; }); renderRows(); });
 
   // ---------- Google Calendar ----------
   let mcp = null;
@@ -563,8 +674,7 @@ Antworte nur mit JSON in genau dieser Form:
         const lim = await s.limits().catch(() => null);
         imageSlots = lim?.images?.maxCount || 0;
         if (lim?.images?.mediaTypes?.length) $("file").accept = lim.images.mediaTypes.join(",");
-        capInfo = imageSlots ? `Claude bereit, bis zu ${imageSlots} Bilder` : (lim ? "Claude bereit, aber ohne Bilder" : "Claude bereit, Limits unbekannt");
-        if (!imageSlots) capProblem = SAMPLE_ERRORS.images_unavailable;
+        capInfo = imageSlots ? `Claude bereit, bis zu ${imageSlots} Bilder` : "Claude bereit, Foto wird auf dem Handy gelesen";
       }
       showDiag();
       if (capProblem && photo) setStatus("readStatus", capProblem, "err");
