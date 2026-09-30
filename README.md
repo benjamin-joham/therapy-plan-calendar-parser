@@ -4,15 +4,16 @@ Take a photo of the day's therapy plan and Claude reads the table
 (**Zeit · Terminart · Ort · Mitarbeiter**). You check the entries, then they're added to Google Calendar.
 Everything works from the phone. No laptop is needed.
 
-There are two versions:
+There are three ways to run it:
 
-| | **A. Claude artifact** (recommended) | B. Standalone web app |
-|---|---|---|
-| Opens in | the Claude app or claude.ai | any browser (GitHub Pages) |
-| Reads the photo with | your **Claude subscription** | an Anthropic **API key** (paid separately) |
-| Writes to the calendar via | your **Google Calendar connector** in Claude | Google OAuth client ID, or a .ics file / single links |
-| Setup | none | GitHub Pages, API key, optional Google Cloud project |
-| Source | [`artifact/therapieplan.html`](artifact/therapieplan.html) | `index.html`, `app.js`, `lib.js`, … |
+| | **A. Claude Project** (recommended) | B. Claude artifact | C. Standalone web app |
+|---|---|---|---|
+| Opens in | the Claude app or claude.ai | the Claude app or claude.ai | any browser (GitHub Pages) |
+| Reads the photo with | your Claude subscription | your Claude subscription | an Anthropic API key (paid separately) |
+| Writes to the calendar via | Google Calendar connector | Google Calendar connector | Google OAuth client ID, or .ics / single links |
+| Setup | paste the instructions once | none | GitHub Pages, API key, optional Google Cloud project |
+| Status | works | **photo reading is blocked on phones** (artifact pages can't send images to Claude there) | works, but needs an API key |
+| Source | [`claude-project/INSTRUCTIONS.md`](claude-project/INSTRUCTIONS.md) | [`artifact/therapieplan.html`](artifact/therapieplan.html) | `index.html`, `app.js`, `lib.js`, … |
 
 Each event looks like this in both versions:
 
@@ -28,7 +29,32 @@ Importing the same plan twice does **not** create duplicates.
 
 ---
 
-## A. Claude artifact (recommended)
+## A. Claude Project (recommended)
+
+A Claude Project keeps standing instructions. Every chat inside it already knows how to turn a plan photo into calendar events.
+
+### One-time setup (on the phone)
+1. Make sure the **Google Calendar** connector is connected (claude.ai → Settings → Connectors).
+2. In the Claude app or on claude.ai, go to **Projects → New project** and name it "Therapieplan".
+3. Open the project's **Instructions** and paste the text from
+   [`claude-project/INSTRUCTIONS.md`](claude-project/INSTRUCTIONS.md).
+   Adjust it if you want, for example the time zone, the reminder minutes, another calendar, or a clinic address to put in front of the room.
+
+### Daily use
+1. Open the "Therapieplan" project and start a new chat.
+2. Attach the photo of the plan and send it. The message can be empty.
+3. Claude shows the appointments it read, with uncertain values marked (?), and asks "Eintragen?" (Add them?).
+   Reply "ja" (yes), or correct something first ("11:00 ist Ergo, nicht Ego, dann ja").
+4. Claude adds the events and reports how many were added and how many were skipped.
+
+To skip the confirmation step, write "direkt eintragen" (add directly) together with the photo.
+
+---
+
+## B. Claude artifact
+
+> **Doesn't work on phones:** artifact pages can't send images to Claude in the Claude app or in the phone browser,
+> so the recognition step fails. The page is kept for reference and in case this changes. Use **A** instead.
 
 **Link:** https://claude.ai/artifact/768trzAJ5o6os7tatYkhaS
 
@@ -60,7 +86,7 @@ The page only works inside Claude. Opened as a plain file or on another website,
 
 ---
 
-## B. Standalone web app (needs an API key)
+## C. Standalone web app (needs an API key)
 
 Use this only if you want to run the tool outside Claude. It's a PWA hosted on GitHub Pages.
 Besides adding events directly to Google Calendar, it can export a **.ics file** or single "Add to Google Calendar" links.
@@ -99,10 +125,11 @@ npm run serve          # local preview on http://localhost:8080
 
 | File | Purpose |
 |---|---|
-| `artifact/therapieplan.html` | **Version A**: the Claude artifact (UI, prompt, connector calls in one file) |
-| `index.html`, `styles.css` | Version B: UI (mobile first) |
+| `claude-project/INSTRUCTIONS.md` | **Version A**: project instructions for Claude |
+| `artifact/therapieplan.html` | Version B: the Claude artifact (UI, prompt, connector calls in one file) |
+| `index.html`, `styles.css` | Version C: UI (mobile first) |
 | `app.js` | Camera/upload, Claude request, review list, Google Calendar / ICS export |
 | `lib.js` | Pure logic: output schema, prompt, normalizing, event/ICS building (tested in `test/`) |
 | `sw.js`, `manifest.webmanifest`, `icon*` | PWA (home screen, offline shell) |
 
-In version B, reading the image uses `claude-opus-5-5` with structured JSON output. The server-side refusal fallback (`fallbacks: "default"`) is turned on.
+In version C, reading the image uses `claude-opus-5-5` with structured JSON output. The server-side refusal fallback (`fallbacks: "default"`) is turned on.
